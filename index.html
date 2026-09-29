@@ -1,170 +1,1831 @@
+```html
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b6d">
-<title>Star Preparatory Remote Photo Booth</title>
+
+<title>Star Preparatory Photo Booth</title>
+
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#eef3f9;color:#10233f}
-header{background:#123b6d;color:#fff;text-align:center;padding:18px}h1{margin:0;font-size:26px}header p{margin:6px 0 0}
-main{max-width:950px;margin:auto;padding:14px}.card{background:#fff;border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 5px 20px #0001}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.stage{background:#07111e;border-radius:15px;overflow:hidden;position:relative;min-height:280px;display:flex;align-items:center;justify-content:center}
-video,canvas{width:100%;display:block;aspect-ratio:4/3;object-fit:cover}canvas{display:none}
-button,input,select{font:inherit}button{border:0;border-radius:11px;padding:12px 15px;margin:5px 3px;font-weight:700;background:#1769aa;color:#fff;cursor:pointer}button.secondary{background:#e7edf5;color:#10233f}button.gold{background:#f4c542;color:#10233f}
-input{padding:12px;border:2px solid #d6dfeb;border-radius:11px;width:100%;margin:6px 0 10px;text-transform:uppercase}
-.row{display:flex;gap:8px;flex-wrap:wrap}.code{font-size:25px;letter-spacing:6px;font-weight:800;background:#edf4fb;padding:12px;border-radius:12px;text-align:center}
-.effects{display:flex;gap:8px;flex-wrap:wrap}.effect{border:2px solid #d6dfeb;padding:9px 12px;border-radius:10px;cursor:pointer}.effect.active{border-color:#1769aa;background:#eaf4ff}
-.status{padding:10px;border-radius:10px;background:#eef5ff;margin-top:8px;font-size:14px}.small{font-size:12px;color:#68788c}
-@media(max-width:750px){.grid{grid-template-columns:1fr}}
-</style>
-</head>
-<body>
-<header><h1>⭐ STAR PREPARATORY</h1><p>REMOTE DIGITAL PHOTO BOOTH • IT CLUB • 2026</p></header>
-<main>
-
-<section class="card" id="modeCard">
-<h2>Choose device</h2>
-<div class="row">
-<button id="ipadMode">📱 iPad — Touch Screen</button>
-<button id="phoneMode" class="secondary">📷 Phone — Camera</button>
-</div>
-<p class="small">Both devices must be connected to the internet. The phone supplies the camera; the iPad controls the booth.</p>
-</section>
-
-<section class="card" id="ipadPanel" style="display:none">
-<h2>📱 iPad Controller</h2>
-<p>Give this code to the phone. The phone will send its camera video to this iPad.</p>
-<div class="code" id="roomCode">------</div>
-<div class="status" id="ipadStatus">Creating a room...</div>
-<div class="grid">
-<div>
-<h3>Live camera</h3>
-<div class="stage"><video id="remoteVideo" autoplay playsinline></video></div>
-</div>
-<div>
-<h3>Choose effect</h3>
-<div class="effects">
-<div class="effect active" data-effect="normal">Normal</div>
-<div class="effect" data-effect="bw">Black & White</div>
-<div class="effect" data-effect="warm">Warm</div>
-<div class="effect" data-effect="cool">Cool</div>
-<div class="effect" data-effect="retro">Retro</div>
-<div class="effect" data-effect="star">Star</div>
-</div>
-<label>Name (optional)</label><input id="visitorName" maxlength="28" placeholder="Enter name">
-<button id="capture" class="gold" disabled>📸 TAKE PHOTO</button>
-<button id="save" disabled>⬇️ SAVE PHOTO</button>
-<button id="again" class="secondary" disabled>🔄 AGAIN</button>
-</div>
-</div>
-<canvas id="photo"></canvas>
-</section>
-
-<section class="card" id="phonePanel" style="display:none">
-<h2>📷 Phone Camera</h2>
-<label>Enter the 6-character iPad code</label>
-<input id="joinCode" maxlength="6" placeholder="ABC123">
-<button id="join">Connect Camera</button>
-<div class="status" id="phoneStatus">After connecting, allow camera access.</div>
-<div class="stage" style="margin-top:12px"><video id="localVideo" autoplay muted playsinline></video></div>
-<button id="startCam" class="gold">📷 Start Camera</button>
-</section>
-
-<section class="card">
-<h3>How the system works</h3>
-<p><b>iPad</b> = touch screen/controller → <b>Phone</b> = camera → live video travels to iPad → iPad selects effect → photo is captured and saved on iPad.</p>
-<p class="small">This prototype uses WebRTC for the camera connection. No photo is automatically uploaded to a public gallery.</p>
-</section>
-</main>
-
-<script>
-let mode='', peer=null, conn=null, call=null, stream=null, selectedEffect='normal', remoteStream=null;
-const $=id=>document.getElementById(id);
-function status(id,msg){$(id).textContent=msg}
-function code(){return Math.random().toString(36).slice(2,8).toUpperCase()}
-
-$('ipadMode').onclick=async()=>{
- mode='ipad';$('modeCard').style.display='none';$('ipadPanel').style.display='block';
- if(!window.Peer){status('ipadStatus','PeerJS failed to load. Check internet connection.');return}
- const room=code(); $('roomCode').textContent=room;
- peer=new Peer('starbooth-'+room,{debug:0});
- peer.on('open',()=>status('ipadStatus','Waiting for the phone camera to connect...'));
- peer.on('connection',c=>{
-   conn=c; status('ipadStatus','Phone connected. Waiting for camera...');
-   conn.on('data',d=>{if(d==='camera-ready')status('ipadStatus','Camera is ready.');});
- });
- peer.on('call',incoming=>{
-   incoming.answer();
-   call=incoming;
-   incoming.on('stream',s=>{remoteStream=s;$('remoteVideo').srcObject=s;$('capture').disabled=false;status('ipadStatus','Live camera connected. Choose an effect and take a photo.');});
- });
- peer.on('error',e=>status('ipadStatus','Connection error: '+e.type));
-};
-
-$('phoneMode').onclick=()=>{$('modeCard').style.display='none';$('phonePanel').style.display='block'};
-
-$('startCam').onclick=async()=>{
- try{
-   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
-   $('localVideo').srcObject=stream;status('phoneStatus','Camera is on. Now connect using the iPad code.');
- }catch(e){status('phoneStatus','Camera permission was denied or unavailable. Allow camera access and try again.')}
-};
-
-$('join').onclick=async()=>{
- const room=$('joinCode').value.trim().toUpperCase();
- if(room.length!==6){status('phoneStatus','Enter the 6-character code shown on the iPad.');return}
- if(!stream) await $('startCam').click();
- if(!stream)return;
- const target='starbooth-'+room;
- peer=new Peer();
- peer.on('open',()=>{
-   conn=peer.connect(target);
-   conn.on('open',()=>{
-     conn.send('camera-ready');
-     call=peer.call(target,stream);
-     status('phoneStatus','Connected! The iPad is receiving the camera.');
-   });
- });
- peer.on('error',e=>status('phoneStatus','Connection error: '+e.type+'. Check the code and internet.'));
-};
-
-document.querySelectorAll('.effect').forEach(el=>el.onclick=()=>{
- document.querySelectorAll('.effect').forEach(x=>x.classList.remove('active'));
- el.classList.add('active');selectedEffect=el.dataset.effect;
-});
-
-function filterString(){
- return {normal:'none',bw:'grayscale(1)',warm:'sepia(.25) saturate(1.35)',cool:'saturate(.85) hue-rotate(12deg)',retro:'sepia(.45) contrast(1.1)',star:'saturate(1.25) contrast(1.08)'}[selectedEffect]||'none';
+*{
+  box-sizing:border-box;
 }
 
-$('capture').onclick=()=>{
- const v=$('remoteVideo'), c=$('photo');
- if(!v.videoWidth)return;
- const max=1400,scale=Math.min(max/v.videoWidth,max/v.videoHeight,1);
- const w=Math.round(v.videoWidth*scale),h=Math.round(v.videoHeight*scale),footer=180;
- c.width=w;c.height=h+footer;
- const x=c.getContext('2d');
- x.filter=filterString();x.drawImage(v,0,0,w,h);x.filter='none';
- x.fillStyle='#123b6d';x.fillRect(0,h,w,footer);
- x.fillStyle='#fff';x.textAlign='center';
- x.font='bold 27px Arial';x.fillText('STAR PREPARATORY UPPER BASIC SCHOOL',w/2,h+45);
- x.font='bold 23px Arial';
- const labels={normal:'📸 IT CLUB • EXHIBITION 2026',bw:'IT CLUB • BLACK & WHITE',warm:'IT CLUB • WARM EFFECT',cool:'IT CLUB • COOL EFFECT',retro:'IT CLUB • RETRO EFFECT',star:'⭐ IT CLUB • STAR EFFECT'};
- x.fillText(labels[selectedEffect],w/2,h+88);
- const n=$('visitorName').value.trim();
- if(n){x.font='bold 21px Arial';x.fillText(n,w/2,h+128)}
- x.font='16px Arial';x.fillText('Made by Star Preparatory IT Club',w/2,h+160);
- c.style.display='block';$('save').disabled=false;$('again').disabled=false;
- status('ipadStatus','Photo captured on the iPad. Preview it below, then save it.');
- c.scrollIntoView({behavior:'smooth',block:'nearest'});
+body{
+  margin:0;
+  font-family:Arial,Helvetica,sans-serif;
+  background:#eef3f9;
+  color:#10233f;
+}
+
+header{
+  background:linear-gradient(135deg,#123b6d,#1769aa);
+  color:white;
+  text-align:center;
+  padding:20px;
+  box-shadow:0 3px 15px #0003;
+}
+
+header h1{
+  margin:0;
+  font-size:28px;
+}
+
+header p{
+  margin:7px 0 0;
+  font-size:14px;
+  opacity:.9;
+}
+
+main{
+  max-width:1100px;
+  margin:auto;
+  padding:18px;
+}
+
+.card{
+  background:white;
+  border-radius:20px;
+  padding:18px;
+  margin-bottom:18px;
+  box-shadow:0 6px 25px #00000012;
+}
+
+h2,h3{
+  margin-top:0;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:1.25fr .75fr;
+  gap:18px;
+}
+
+.stage{
+  background:#050c15;
+  border-radius:18px;
+  overflow:hidden;
+  position:relative;
+  min-height:300px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:4px solid #0d2948;
+}
+
+video{
+  width:100%;
+  aspect-ratio:4/3;
+  display:block;
+  object-fit:cover;
+  transition:filter .25s ease;
+}
+
+canvas{
+  width:100%;
+  display:none;
+  border-radius:15px;
+}
+
+button,
+input,
+select{
+  font:inherit;
+}
+
+button{
+  border:0;
+  border-radius:12px;
+  padding:13px 17px;
+  margin:5px 3px;
+  font-weight:700;
+  background:#1769aa;
+  color:white;
+  cursor:pointer;
+  transition:.2s;
+}
+
+button:hover{
+  transform:translateY(-1px);
+  filter:brightness(1.05);
+}
+
+button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  transform:none;
+}
+
+button.secondary{
+  background:#e7edf5;
+  color:#10233f;
+}
+
+button.gold{
+  background:#f4c542;
+  color:#10233f;
+}
+
+button.green{
+  background:#16834b;
+}
+
+button.red{
+  background:#c93636;
+}
+
+.bigButton{
+  width:100%;
+  font-size:18px;
+  padding:17px;
+  margin-top:12px;
+}
+
+input{
+  padding:13px;
+  border:2px solid #d6dfeb;
+  border-radius:12px;
+  width:100%;
+  margin:6px 0 12px;
+  text-transform:uppercase;
+}
+
+.row{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.code{
+  font-size:28px;
+  letter-spacing:7px;
+  font-weight:800;
+  background:#edf4fb;
+  padding:14px;
+  border-radius:14px;
+  text-align:center;
+  margin:10px 0;
+}
+
+.effects{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-bottom:15px;
+}
+
+.effect{
+  border:2px solid #d6dfeb;
+  padding:11px 8px;
+  border-radius:11px;
+  cursor:pointer;
+  text-align:center;
+  font-weight:700;
+  background:white;
+}
+
+.effect.active{
+  border-color:#1769aa;
+  background:#eaf4ff;
+  color:#1769aa;
+}
+
+.status{
+  padding:11px;
+  border-radius:11px;
+  background:#eef5ff;
+  margin-top:8px;
+  font-size:14px;
+}
+
+.small{
+  font-size:12px;
+  color:#68788c;
+}
+
+.progress{
+  height:10px;
+  background:#dce5ef;
+  border-radius:20px;
+  overflow:hidden;
+  margin:10px 0;
+}
+
+.progressBar{
+  height:100%;
+  width:0%;
+  background:#f4c542;
+  transition:width .3s ease;
+}
+
+/* COUNTDOWN */
+
+.countdown{
+  position:absolute;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:#0008;
+  z-index:20;
+}
+
+.countdownNumber{
+  width:150px;
+  height:150px;
+  border-radius:50%;
+  background:#ffffffee;
+  color:#123b6d;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:90px;
+  font-weight:900;
+  box-shadow:0 0 40px #fff8;
+  animation:countPop .8s ease;
+}
+
+@keyframes countPop{
+  0%{
+    transform:scale(.4);
+    opacity:0;
+  }
+  60%{
+    transform:scale(1.15);
+    opacity:1;
+  }
+  100%{
+    transform:scale(1);
+  }
+}
+
+/* FLASH */
+
+.flash{
+  position:absolute;
+  inset:0;
+  background:white;
+  z-index:30;
+  opacity:0;
+  pointer-events:none;
+}
+
+.flash.active{
+  animation:flashEffect .35s ease;
+}
+
+@keyframes flashEffect{
+  0%{opacity:0}
+  30%{opacity:1}
+  100%{opacity:0}
+}
+
+/* PHOTO COUNTER */
+
+.photoCounter{
+  position:absolute;
+  top:12px;
+  left:12px;
+  z-index:10;
+  background:#000b;
+  color:white;
+  padding:8px 13px;
+  border-radius:20px;
+  font-weight:700;
+}
+
+/* RESULT */
+
+.resultArea{
+  margin-top:20px;
+}
+
+.resultGrid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px;
+}
+
+.resultGrid img{
+  width:100%;
+  border-radius:10px;
+  background:#111;
+}
+
+.finalCanvas{
+  width:100%;
+  max-width:800px;
+  margin:auto;
+  display:block;
+  border-radius:15px;
+}
+
+.hidden{
+  display:none!important;
+}
+
+.sessionInfo{
+  text-align:center;
+  font-weight:700;
+  margin:10px 0;
+}
+
+@media(max-width:800px){
+
+  .grid{
+    grid-template-columns:1fr;
+  }
+
+  main{
+    padding:10px;
+  }
+
+  .countdownNumber{
+    width:120px;
+    height:120px;
+    font-size:70px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>⭐ STAR PREPARATORY</h1>
+  <p>REMOTE DIGITAL PHOTO BOOTH • IT CLUB • 2026</p>
+</header>
+
+<main>
+
+<!-- DEVICE SELECTION -->
+
+<section class="card" id="modeCard">
+
+  <h2>📸 Star Preparatory Photo Booth</h2>
+
+  <p>
+    Choose which device will control the photo booth.
+  </p>
+
+  <div class="row">
+    <button id="ipadMode">
+      📱 iPad — Photo Booth Controller
+    </button>
+
+    <button id="phoneMode" class="secondary">
+      📷 Phone — Camera
+    </button>
+  </div>
+
+  <p class="small">
+    The phone provides the camera while the iPad controls the photo session.
+    Both devices need an internet connection.
+  </p>
+
+</section>
+
+
+<!-- IPAD -->
+
+<section class="card" id="ipadPanel" style="display:none">
+
+  <h2>📱 Photo Booth Controller</h2>
+
+  <p>
+    Enter the code below on the phone to connect the camera.
+  </p>
+
+  <div class="code" id="roomCode">
+    ------
+  </div>
+
+  <div class="status" id="ipadStatus">
+    Creating photo booth...
+  </div>
+
+  <div class="grid">
+
+    <!-- CAMERA -->
+
+    <div>
+
+      <h3>📷 Live Camera</h3>
+
+      <div class="stage">
+
+        <video
+          id="remoteVideo"
+          autoplay
+          playsinline
+        ></video>
+
+        <div class="photoCounter" id="photoCounter">
+          Photo 0 of 4
+        </div>
+
+        <div class="countdown" id="countdown">
+          <div class="countdownNumber" id="countdownNumber">
+            3
+          </div>
+        </div>
+
+        <div class="flash" id="flash"></div>
+
+      </div>
+
+      <div class="sessionInfo" id="sessionInfo">
+        Ready for photo session
+      </div>
+
+      <div class="progress">
+        <div class="progressBar" id="progressBar"></div>
+      </div>
+
+    </div>
+
+
+    <!-- CONTROLS -->
+
+    <div>
+
+      <h3>✨ Choose Effect</h3>
+
+      <div class="effects">
+
+        <div class="effect active" data-effect="normal">
+          Normal
+        </div>
+
+        <div class="effect" data-effect="bw">
+          ⚫ B&W
+        </div>
+
+        <div class="effect" data-effect="warm">
+          🔥 Warm
+        </div>
+
+        <div class="effect" data-effect="cool">
+          ❄️ Cool
+        </div>
+
+        <div class="effect" data-effect="retro">
+          📻 Retro
+        </div>
+
+        <div class="effect" data-effect="vintage">
+          📷 Vintage
+        </div>
+
+        <div class="effect" data-effect="star">
+          ⭐ Star
+        </div>
+
+        <div class="effect" data-effect="bright">
+          ☀️ Bright
+        </div>
+
+      </div>
+
+
+      <label>
+        <b>Name (optional)</b>
+      </label>
+
+      <input
+        id="visitorName"
+        maxlength="28"
+        placeholder="Enter name"
+      >
+
+
+      <button
+        id="capture"
+        class="gold bigButton"
+        disabled
+      >
+        📸 START 4-PHOTO SESSION
+      </button>
+
+      <button
+        id="save"
+        class="green bigButton"
+        disabled
+      >
+        ⬇️ SAVE PHOTO STRIP
+      </button>
+
+      <button
+        id="saveIndividual"
+        class="secondary bigButton"
+        disabled
+      >
+        🖼️ SAVE INDIVIDUAL PHOTOS
+      </button>
+
+      <button
+        id="again"
+        class="secondary bigButton"
+        disabled
+      >
+        🔄 NEW SESSION
+      </button>
+
+    </div>
+
+  </div>
+
+
+  <!-- FINAL RESULT -->
+
+  <div class="resultArea hidden" id="resultArea">
+
+    <h3>🎉 Photo Session Complete!</h3>
+
+    <p class="small">
+      Four photos have been captured. The final photo strip is shown below.
+    </p>
+
+    <canvas
+      id="photoStrip"
+      class="finalCanvas"
+    ></canvas>
+
+    <div
+      class="resultGrid"
+      id="individualPhotos"
+    ></div>
+
+  </div>
+
+
+  <!-- HIDDEN CANVAS -->
+
+  <canvas id="photoCanvas"></canvas>
+
+</section>
+
+
+<!-- PHONE -->
+
+<section class="card" id="phonePanel" style="display:none">
+
+  <h2>📷 Phone Camera</h2>
+
+  <label>
+    <b>Enter the 6-character iPad code</b>
+  </label>
+
+  <input
+    id="joinCode"
+    maxlength="6"
+    placeholder="ABC123"
+  >
+
+  <button id="startCam" class="gold">
+    📷 START CAMERA
+  </button>
+
+  <button id="join">
+    🔗 CONNECT TO PHOTO BOOTH
+  </button>
+
+  <div class="status" id="phoneStatus">
+    Start the camera, then enter the iPad code.
+  </div>
+
+  <div
+    class="stage"
+    style="margin-top:15px"
+  >
+    <video
+      id="localVideo"
+      autoplay
+      muted
+      playsinline
+    ></video>
+  </div>
+
+</section>
+
+
+<!-- INFORMATION -->
+
+<section class="card">
+
+  <h3>⭐ How Star Preparatory Photo Booth Works</h3>
+
+  <p>
+    <b>iPad</b> = touch-screen controller
+  </p>
+
+  <p>
+    <b>Phone</b> = camera
+  </p>
+
+  <p>
+    <b>Photo session</b> = 4 photographs
+  </p>
+
+  <p>
+    <b>Countdown</b> = 3 seconds before every photograph
+  </p>
+
+  <p>
+    <b>Final result</b> = 2 × 2 photo strip
+  </p>
+
+  <p class="small">
+    Photos are captured locally on the iPad. Nothing is automatically
+    uploaded to a public gallery.
+  </p>
+
+</section>
+
+</main>
+
+
+<script>
+
+let mode = '';
+let peer = null;
+let conn = null;
+let call = null;
+let stream = null;
+
+let selectedEffect = 'normal';
+
+let photos = [];
+
+let takingSession = false;
+
+const TOTAL_PHOTOS = 4;
+
+
+/* --------------------------------------------------
+   HELPERS
+-------------------------------------------------- */
+
+const $ = id => document.getElementById(id);
+
+
+function status(id,msg){
+  $(id).textContent = msg;
+}
+
+
+function generateCode(){
+
+  return Math.random()
+    .toString(36)
+    .slice(2,8)
+    .toUpperCase();
+
+}
+
+
+/* --------------------------------------------------
+   EFFECTS
+-------------------------------------------------- */
+
+function filterString(){
+
+  const filters = {
+
+    normal:
+      'none',
+
+    bw:
+      'grayscale(1)',
+
+    warm:
+      'sepia(.25) saturate(1.35)',
+
+    cool:
+      'saturate(.85) hue-rotate(12deg)',
+
+    retro:
+      'sepia(.45) contrast(1.1) saturate(1.15)',
+
+    vintage:
+      'sepia(.35) contrast(1.15) saturate(.8)',
+
+    star:
+      'saturate(1.35) contrast(1.12) brightness(1.05)',
+
+    bright:
+      'brightness(1.18) contrast(1.05) saturate(1.08)'
+
+  };
+
+  return filters[selectedEffect] || 'none';
+
+}
+
+
+/* --------------------------------------------------
+   APPLY LIVE EFFECT
+-------------------------------------------------- */
+
+function updateLiveEffect(){
+
+  const video = $('remoteVideo');
+
+  video.style.filter = filterString();
+
+}
+
+
+/* --------------------------------------------------
+   DEVICE MODE
+-------------------------------------------------- */
+
+$('ipadMode').onclick = async () => {
+
+  mode = 'ipad';
+
+  $('modeCard').style.display = 'none';
+
+  $('ipadPanel').style.display = 'block';
+
+  if(!window.Peer){
+
+    status(
+      'ipadStatus',
+      'PeerJS failed to load. Check your internet connection.'
+    );
+
+    return;
+  }
+
+
+  const room = generateCode();
+
+  $('roomCode').textContent = room;
+
+
+  peer = new Peer(
+    'starbooth-' + room,
+    {
+      debug:0
+    }
+  );
+
+
+  peer.on('open',()=>{
+
+    status(
+      'ipadStatus',
+      'Waiting for the phone camera to connect...'
+    );
+
+  });
+
+
+  peer.on('connection',c=>{
+
+    conn = c;
+
+    status(
+      'ipadStatus',
+      'Phone connected. Waiting for camera...'
+    );
+
+
+    conn.on('data',data=>{
+
+      if(data === 'camera-ready'){
+
+        status(
+          'ipadStatus',
+          'Camera is ready. You can start the photo session.'
+        );
+
+      }
+
+    });
+
+  });
+
+
+  peer.on('call',incoming=>{
+
+    incoming.answer();
+
+    call = incoming;
+
+
+    incoming.on('stream',remoteStream=>{
+
+      $('remoteVideo').srcObject = remoteStream;
+
+      $('capture').disabled = false;
+
+      status(
+        'ipadStatus',
+        'Live camera connected. Choose an effect and start the photo session.'
+      );
+
+    });
+
+  });
+
+
+  peer.on('error',error=>{
+
+    status(
+      'ipadStatus',
+      'Connection error: ' + error.type
+    );
+
+  });
+
 };
 
-$('save').onclick=()=>{
- const a=document.createElement('a');a.download='Star-Preparatory-IT-Club-Photo.png';a.href=$('photo').toDataURL('image/png');a.click();
+
+/* --------------------------------------------------
+   PHONE MODE
+-------------------------------------------------- */
+
+$('phoneMode').onclick = () => {
+
+  $('modeCard').style.display = 'none';
+
+  $('phonePanel').style.display = 'block';
+
 };
-$('again').onclick=()=>{$('photo').style.display='none';$('save').disabled=true;$('again').disabled=true;status('ipadStatus','Ready for another photo.')};
+
+
+/* --------------------------------------------------
+   START PHONE CAMERA
+-------------------------------------------------- */
+
+$('startCam').onclick = async () => {
+
+  try{
+
+    stream = await navigator.mediaDevices.getUserMedia({
+
+      video:{
+        facingMode:{
+          ideal:'environment'
+        },
+
+        width:{
+          ideal:1920
+        },
+
+        height:{
+          ideal:1080
+        }
+      },
+
+      audio:false
+
+    });
+
+
+    $('localVideo').srcObject = stream;
+
+
+    status(
+      'phoneStatus',
+      'Camera is ON. Enter the iPad code and connect.'
+    );
+
+  }
+
+  catch(error){
+
+    console.error(error);
+
+    status(
+      'phoneStatus',
+      'Camera permission was denied or unavailable. Allow camera access and try again.'
+    );
+
+  }
+
+};
+
+
+/* --------------------------------------------------
+   JOIN PHOTO BOOTH
+-------------------------------------------------- */
+
+$('join').onclick = async () => {
+
+  const room =
+    $('joinCode').value
+      .trim()
+      .toUpperCase();
+
+
+  if(room.length !== 6){
+
+    status(
+      'phoneStatus',
+      'Enter the 6-character code shown on the iPad.'
+    );
+
+    return;
+
+  }
+
+
+  if(!stream){
+
+    await $('startCam').click();
+
+  }
+
+
+  if(!stream){
+
+    return;
+
+  }
+
+
+  peer = new Peer();
+
+
+  peer.on('open',()=>{
+
+    conn = peer.connect(
+      'starbooth-' + room
+    );
+
+
+    conn.on('open',()=>{
+
+      conn.send('camera-ready');
+
+
+      call = peer.call(
+        'starbooth-' + room,
+        stream
+      );
+
+
+      status(
+        'phoneStatus',
+        'Connected! The iPad is receiving the camera.'
+      );
+
+    });
+
+  });
+
+
+  peer.on('error',error=>{
+
+    status(
+      'phoneStatus',
+      'Connection error: ' +
+      error.type +
+      '. Check the code and internet connection.'
+    );
+
+  });
+
+};
+
+
+/* --------------------------------------------------
+   EFFECT SELECTION
+-------------------------------------------------- */
+
+document
+  .querySelectorAll('.effect')
+  .forEach(effect => {
+
+    effect.onclick = () => {
+
+      document
+        .querySelectorAll('.effect')
+        .forEach(item =>
+          item.classList.remove('active')
+        );
+
+
+      effect.classList.add('active');
+
+
+      selectedEffect =
+        effect.dataset.effect;
+
+
+      updateLiveEffect();
+
+    };
+
+  });
+
+
+/* --------------------------------------------------
+   COUNTDOWN
+-------------------------------------------------- */
+
+function countdown(seconds){
+
+  return new Promise(resolve=>{
+
+    const box = $('countdown');
+
+    const number = $('countdownNumber');
+
+    box.style.display = 'flex';
+
+
+    let current = seconds;
+
+
+    function tick(){
+
+      if(current > 0){
+
+        number.textContent = current;
+
+        number.style.animation = 'none';
+
+        void number.offsetWidth;
+
+        number.style.animation =
+          'countPop .8s ease';
+
+        current--;
+
+        setTimeout(
+          tick,
+          1000
+        );
+
+      }
+
+      else{
+
+        number.textContent = '📸';
+
+        setTimeout(()=>{
+
+          box.style.display = 'none';
+
+          resolve();
+
+        },350);
+
+      }
+
+    }
+
+
+    tick();
+
+  });
+
+}
+
+
+/* --------------------------------------------------
+   FLASH
+-------------------------------------------------- */
+
+function cameraFlash(){
+
+  const flash = $('flash');
+
+  flash.classList.remove('active');
+
+  void flash.offsetWidth;
+
+  flash.classList.add('active');
+
+}
+
+
+/* --------------------------------------------------
+   CAPTURE ONE PHOTO
+-------------------------------------------------- */
+
+function captureSinglePhoto(){
+
+  return new Promise(resolve=>{
+
+    const video =
+      $('remoteVideo');
+
+    const canvas =
+      $('photoCanvas');
+
+
+    if(!video.videoWidth){
+
+      resolve(null);
+
+      return;
+
+    }
+
+
+    const MAX_WIDTH = 1600;
+
+    const MAX_HEIGHT = 1200;
+
+
+    const videoWidth =
+      video.videoWidth;
+
+    const videoHeight =
+      video.videoHeight;
+
+
+    const scale =
+      Math.min(
+        MAX_WIDTH / videoWidth,
+        MAX_HEIGHT / videoHeight,
+        1
+      );
+
+
+    const width =
+      Math.round(videoWidth * scale);
+
+
+    const height =
+      Math.round(videoHeight * scale);
+
+
+    canvas.width = width;
+
+    canvas.height = height;
+
+
+    const ctx =
+      canvas.getContext('2d');
+
+
+    ctx.filter =
+      filterString();
+
+
+    ctx.drawImage(
+      video,
+      0,
+      0,
+      width,
+      height
+    );
+
+
+    ctx.filter = 'none';
+
+
+    cameraFlash();
+
+
+    canvas.toBlob(
+      blob => {
+
+        if(blob){
+
+          resolve(blob);
+
+        }
+        else{
+
+          resolve(null);
+
+        }
+
+      },
+      'image/jpeg',
+      .94
+    );
+
+  });
+
+}
+
+
+/* --------------------------------------------------
+   PHOTO SESSION
+-------------------------------------------------- */
+
+$('capture').onclick = async () => {
+
+  if(takingSession){
+
+    return;
+
+  }
+
+
+  const video =
+    $('remoteVideo');
+
+
+  if(!video.videoWidth){
+
+    status(
+      'ipadStatus',
+      'Camera is not ready yet.'
+    );
+
+    return;
+
+  }
+
+
+  takingSession = true;
+
+  photos = [];
+
+
+  $('capture').disabled = true;
+
+  $('save').disabled = true;
+
+  $('saveIndividual').disabled = true;
+
+  $('again').disabled = true;
+
+
+  $('resultArea')
+    .classList.add('hidden');
+
+
+  const visitor =
+    $('visitorName')
+      .value
+      .trim();
+
+
+  for(
+    let i = 0;
+    i < TOTAL_PHOTOS;
+    i++
+  ){
+
+    const photoNumber = i + 1;
+
+
+    $('photoCounter').textContent =
+      `Photo ${photoNumber} of ${TOTAL_PHOTOS}`;
+
+
+    $('sessionInfo').textContent =
+      `Get ready... Photo ${photoNumber}`;
+
+
+    $('progressBar').style.width =
+      `${(i / TOTAL_PHOTOS) * 100}%`;
+
+
+    /*
+      3 SECOND COUNTDOWN
+    */
+
+    await countdown(3);
+
+
+    $('sessionInfo').textContent =
+      `Taking photo ${photoNumber}...`;
+
+
+    const blob =
+      await captureSinglePhoto();
+
+
+    if(blob){
+
+      photos.push(blob);
+
+    }
+
+
+    /*
+      Short pause before next photograph
+    */
+
+    if(i < TOTAL_PHOTOS - 1){
+
+      $('sessionInfo').textContent =
+        'Great! Get ready for the next photo...';
+
+      await new Promise(
+        resolve =>
+          setTimeout(resolve,1200)
+      );
+
+    }
+
+  }
+
+
+  $('progressBar').style.width =
+    '100%';
+
+
+  $('photoCounter').textContent =
+    `Photo ${photos.length} of ${TOTAL_PHOTOS}`;
+
+
+  if(photos.length > 0){
+
+    $('sessionInfo').textContent =
+      '🎉 Photo session complete!';
+
+    await createPhotoStrip();
+
+    $('save').disabled = false;
+
+    $('saveIndividual').disabled = false;
+
+    $('again').disabled = false;
+
+    $('resultArea')
+      .classList.remove('hidden');
+
+
+    $('resultArea')
+      .scrollIntoView({
+        behavior:'smooth',
+        block:'nearest'
+      });
+
+  }
+
+
+  takingSession = false;
+
+};
+
+
+/* --------------------------------------------------
+   CREATE PHOTO STRIP
+-------------------------------------------------- */
+
+async function createPhotoStrip(){
+
+  const images = [];
+
+
+  for(const blob of photos){
+
+    const url =
+      URL.createObjectURL(blob);
+
+
+    const img =
+      new Image();
+
+
+    await new Promise(resolve=>{
+
+      img.onload = resolve;
+
+      img.src = url;
+
+    });
+
+
+    images.push(img);
+
+  }
+
+
+  if(!images.length){
+
+    return;
+
+  }
+
+
+  const first =
+    images[0];
+
+
+  const photoWidth = 800;
+
+  const photoHeight =
+    Math.round(
+      photoWidth *
+      first.naturalHeight /
+      first.naturalWidth
+    );
+
+
+  const gap = 20;
+
+  const headerHeight = 110;
+
+  const footerHeight = 100;
+
+
+  const stripWidth =
+    photoWidth * 2 +
+    gap * 3;
+
+
+  const stripHeight =
+    headerHeight +
+    photoHeight * 2 +
+    gap * 3 +
+    footerHeight;
+
+
+  const canvas =
+    $('photoStrip');
+
+
+  canvas.width =
+    stripWidth;
+
+  canvas.height =
+    stripHeight;
+
+
+  const ctx =
+    canvas.getContext('2d');
+
+
+  /*
+    Background
+  */
+
+  ctx.fillStyle =
+    '#f4f7fb';
+
+  ctx.fillRect(
+    0,
+    0,
+    stripWidth,
+    stripHeight
+  );
+
+
+  /*
+    Header
+  */
+
+  ctx.fillStyle =
+    '#123b6d';
+
+  ctx.fillRect(
+    0,
+    0,
+    stripWidth,
+    headerHeight
+  );
+
+
+  ctx.fillStyle =
+    '#ffffff';
+
+  ctx.textAlign =
+    'center';
+
+
+  ctx.font =
+    'bold 42px Arial';
+
+
+  ctx.fillText(
+    '⭐ STAR PREPARATORY',
+    stripWidth / 2,
+    48
+  );
+
+
+  ctx.font =
+    'bold 23px Arial';
+
+
+  ctx.fillText(
+    'IT CLUB • PHOTO BOOTH 2026',
+    stripWidth / 2,
+    83
+  );
+
+
+  /*
+    Photos
+  */
+
+  const positions = [
+
+    {
+      x:gap,
+      y:headerHeight + gap
+    },
+
+    {
+      x:photoWidth + gap * 2,
+      y:headerHeight + gap
+    },
+
+    {
+      x:gap,
+      y:headerHeight + photoHeight + gap * 2
+    },
+
+    {
+      x:photoWidth + gap * 2,
+      y:headerHeight + photoHeight + gap * 2
+    }
+
+  ];
+
+
+  images.forEach((img,index)=>{
+
+    if(!positions[index]){
+
+      return;
+
+    }
+
+
+    const p =
+      positions[index];
+
+
+    ctx.drawImage(
+      img,
+      p.x,
+      p.y,
+      photoWidth,
+      photoHeight
+    );
+
+
+    /*
+      Photo number
+    */
+
+    ctx.fillStyle =
+      '#000b';
+
+    ctx.fillRect(
+      p.x,
+      p.y + photoHeight - 45,
+      120,
+      45
+    );
+
+
+    ctx.fillStyle =
+      '#ffffff';
+
+    ctx.font =
+      'bold 22px Arial';
+
+    ctx.textAlign =
+      'center';
+
+
+    ctx.fillText(
+      `PHOTO ${index + 1}`,
+      p.x + 60,
+      p.y + photoHeight - 15
+    );
+
+  });
+
+
+  /*
+    Footer
+  */
+
+  ctx.fillStyle =
+    '#123b6d';
+
+  ctx.fillRect(
+    0,
+    stripHeight - footerHeight,
+    stripWidth,
+    footerHeight
+  );
+
+
+  ctx.fillStyle =
+    '#ffffff';
+
+  ctx.textAlign =
+    'center';
+
+
+  const name =
+    $('visitorName')
+      .value
+      .trim();
+
+
+  ctx.font =
+    'bold 25px Arial';
+
+
+  if(name){
+
+    ctx.fillText(
+      name,
+      stripWidth / 2,
+      stripHeight - 60
+    );
+
+  }
+
+
+  ctx.font =
+    '18px Arial';
+
+
+  ctx.fillText(
+    'Made by Star Preparatory IT Club',
+    stripWidth / 2,
+    stripHeight - 25
+  );
+
+
+  /*
+    Individual photo previews
+  */
+
+  const container =
+    $('individualPhotos');
+
+
+  container.innerHTML = '';
+
+
+  images.forEach((img,index)=>{
+
+    const image =
+      document.createElement('img');
+
+
+    image.src =
+      img.src;
+
+
+    image.alt =
+      `Photo ${index + 1}`;
+
+
+    container.appendChild(image);
+
+  });
+
+}
+
+
+/* --------------------------------------------------
+   SAVE PHOTO STRIP
+-------------------------------------------------- */
+
+$('save').onclick = () => {
+
+  const canvas =
+    $('photoStrip');
+
+
+  const link =
+    document.createElement('a');
+
+
+  const name =
+    $('visitorName')
+      .value
+      .trim()
+      .replace(/\s+/g,'-');
+
+
+  link.download =
+    name
+      ? `Star-Preparatory-${name}-Photo-Strip.jpg`
+      : `Star-Preparatory-Photo-Strip.jpg`;
+
+
+  link.href =
+    canvas.toDataURL(
+      'image/jpeg',
+      .95
+    );
+
+
+  link.click();
+
+};
+
+
+/* --------------------------------------------------
+   SAVE INDIVIDUAL PHOTOS
+-------------------------------------------------- */
+
+$('saveIndividual').onclick = () => {
+
+  photos.forEach(
+    (blob,index)=>{
+
+      const url =
+        URL.createObjectURL(blob);
+
+
+      const link =
+        document.createElement('a');
+
+
+      const name =
+        $('visitorName')
+          .value
+          .trim()
+          .replace(/\s+/g,'-');
+
+
+      link.download =
+        name
+          ? `Star-Preparatory-${name}-Photo-${index + 1}.jpg`
+          : `Star-Preparatory-Photo-${index + 1}.jpg`;
+
+
+      link.href = url;
+
+
+      link.click();
+
+
+      setTimeout(
+        () => URL.revokeObjectURL(url),
+        2000
+      );
+
+    }
+  );
+
+};
+
+
+/* --------------------------------------------------
+   NEW SESSION
+-------------------------------------------------- */
+
+$('again').onclick = () => {
+
+  photos = [];
+
+
+  $('resultArea')
+    .classList.add('hidden');
+
+
+  $('progressBar').style.width =
+    '0%';
+
+
+  $('photoCounter').textContent =
+    'Photo 0 of 4';
+
+
+  $('sessionInfo').textContent =
+    'Ready for photo session';
+
+
+  $('save').disabled = true;
+
+  $('saveIndividual').disabled = true;
+
+  $('again').disabled = true;
+
+  $('capture').disabled = false;
+
+
+  status(
+    'ipadStatus',
+    'Ready for another 4-photo session.'
+  );
+
+
+  window.scrollTo({
+    top:0,
+    behavior:'smooth'
+  });
+
+};
+
+
+/* --------------------------------------------------
+   INITIAL LIVE EFFECT
+-------------------------------------------------- */
+
+updateLiveEffect();
+
 </script>
+
 </body>
 </html>
+```
